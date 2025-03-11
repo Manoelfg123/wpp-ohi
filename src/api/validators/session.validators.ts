@@ -2,6 +2,23 @@ import { z } from 'zod';
 import { SessionStatus } from '../../domain/enums/session-status.enum';
 
 /**
+ * Esquema para validação de criação de sessão com QR Code
+ */
+export const createSessionWithQRSchema = z.object({
+  body: z.object({
+    name: z.string().min(3).max(50),
+    config: z.object({
+      qrTimeout: z.number().int().min(30000).max(300000).optional(), // Entre 30s e 5min
+      restartOnAuthFail: z.boolean().optional(),
+      maxRetries: z.number().int().min(0).max(10).optional(),
+      browser: z.tuple([z.string(), z.string(), z.string()]).optional(),
+    }).optional(),
+    webhookUrl: z.string().url().optional(),
+  }),
+});
+
+
+/**
  * Esquema para validação de configuração de sessão
  */
 export const sessionConfigSchema = z.object({

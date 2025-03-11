@@ -3,12 +3,66 @@ import { sessionController } from '../controllers/session.controller';
 import { validate } from '../middlewares/validators';
 import { 
   createSessionSchema, 
+  createSessionWithQRSchema,
   updateSessionSchema, 
   sessionIdSchema, 
   listSessionsSchema 
 } from '../validators/session.validators';
 
 const router = Router();
+
+/**
+ * @swagger
+ * /api/sessions/create-with-qr:
+ *   post:
+ *     summary: Cria uma nova sessão e retorna o QR Code imediatamente
+ *     tags: [Sessões]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SessionCreate'
+ *     responses:
+ *       201:
+ *         description: Sessão criada com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     session:
+ *                       $ref: '#/components/schemas/SessionResponse'
+ *                     qrcode:
+ *                       $ref: '#/components/schemas/QRCodeResponse'
+ *       400:
+ *         description: Dados inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationError'
+ *       401:
+ *         description: Não autorizado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/create-with-qr', validate(createSessionWithQRSchema), sessionController.createSessionWithQR);
 
 /**
  * @swagger
