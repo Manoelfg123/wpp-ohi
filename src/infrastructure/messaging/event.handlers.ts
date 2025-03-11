@@ -164,11 +164,18 @@ export class WhatsAppEventHandlers {
       
       // Atualiza o status da mensagem, se necessário
       if (newStatus && message.status !== newStatus) {
-        await this.messageRepository.updateStatus(
-          message.id,
-          newStatus,
-          new Date(receiptTimestamp * 1000)
-        );
+        await this.messageRepository.updateStatus(message.id, newStatus);
+        
+        // Atualiza o timestamp de entrega/leitura
+        if (newStatus === MessageStatus.DELIVERED) {
+          await this.messageRepository.updateMetadata(message.id, {
+            deliveredAt: new Date(receiptTimestamp * 1000)
+          });
+        } else if (newStatus === MessageStatus.READ) {
+          await this.messageRepository.updateMetadata(message.id, {
+            readAt: new Date(receiptTimestamp * 1000)
+          });
+        }
         
         // Publica evento de atualização de status
         await eventPublisher.publishEvent({

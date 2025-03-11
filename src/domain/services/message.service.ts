@@ -11,9 +11,12 @@ import {
   IReactionMessage, 
   IStickerMessage,
   IMessageResponse,
-  IMessageDetails
+  IMessageDetails,
+  ICreateMessageDTO
 } from '../interfaces/message.interface';
 import { SessionStatus } from '../enums/session-status.enum';
+import { MessageStatus } from '../enums/message-status.enum';
+import { MessageType } from '../enums/message-types.enum';
 import { NotFoundError, WhatsAppError, BadRequestError } from '../../utils/error.types';
 import logger from '../../utils/logger';
 
@@ -40,6 +43,20 @@ export class MessageService {
     // Verifica se a sessão está conectada
     if (session.status !== SessionStatus.CONNECTED) {
       throw new WhatsAppError(`Sessão ${sessionId} não está conectada (status: ${session.status})`);
+    }
+  }
+
+  /**
+   * Cria uma nova mensagem
+   * @param data Dados da mensagem
+   */
+  async createMessage(data: ICreateMessageDTO): Promise<IMessageResponse> {
+    try {
+      const message = await this.messageRepository.create(data);
+      return message;
+    } catch (error) {
+      logger.error('Erro ao criar mensagem:', error);
+      throw error;
     }
   }
 
@@ -308,8 +325,8 @@ export class MessageService {
   async listSessionMessages(
     sessionId: string,
     options?: {
-      status?: string;
-      type?: string;
+      status?: MessageStatus;
+      type?: MessageType;
       page?: number;
       limit?: number;
     }
@@ -318,13 +335,10 @@ export class MessageService {
       // Verifica se a sessão existe
       await this.sessionRepository.findById(sessionId);
       
-      // Converte os tipos de string para enum
-      const parsedOptions: any = { ...options };
-      
       // Lista as mensagens
       const { messages, total } = await this.messageRepository.findBySessionId(
         sessionId,
-        parsedOptions
+        options
       );
       
       return {

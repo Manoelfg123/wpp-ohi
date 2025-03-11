@@ -16,6 +16,15 @@ const router = Router();
  * /api/sessions/create-with-qr:
  *   post:
  *     summary: Cria uma nova sessão e retorna o QR Code imediatamente
+ *     description: |
+ *       Cria uma nova sessão do WhatsApp e retorna o QR Code para autenticação em uma única chamada.
+ *       Se a sessão já estiver conectada, retorna uma mensagem informativa.
+ *       
+ *       O QR Code retornado tem um tempo de expiração configurável através do parâmetro `qrTimeout` 
+ *       no objeto de configuração. Se não especificado, o padrão é 60 segundos.
+ *       
+ *       Após a criação da sessão, você pode monitorar seu status através do endpoint GET /sessions/{id}
+ *       para verificar quando a autenticação for concluída.
  *     tags: [Sessões]
  *     security:
  *       - ApiKeyAuth: []
@@ -25,24 +34,34 @@ const router = Router();
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/SessionCreate'
+ *           example:
+ *             name: "Nova Sessão"
+ *             config:
+ *               qrTimeout: 60000
+ *               restartOnAuthFail: true
+ *             webhookUrl: "https://exemplo.com/webhook"
  *     responses:
  *       201:
  *         description: Sessão criada com sucesso
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 data:
- *                   type: object
- *                   properties:
- *                     session:
- *                       $ref: '#/components/schemas/SessionResponse'
- *                     qrcode:
- *                       $ref: '#/components/schemas/QRCodeResponse'
+ *               $ref: '#/components/schemas/SessionWithQRResponse'
+ *             example:
+ *               status: "success"
+ *               data:
+ *                 session:
+ *                   id: "123e4567-e89b-12d3-a456-426614174000"
+ *                   name: "Nova Sessão"
+ *                   status: "qr_ready"
+ *                   config:
+ *                     qrTimeout: 60000
+ *                     restartOnAuthFail: true
+ *                   createdAt: "2023-01-01T00:00:00.000Z"
+ *                   updatedAt: "2023-01-01T00:00:00.000Z"
+ *                 qrcode:
+ *                   qrcode: "data:image/png;base64,..."
+ *                   expiresIn: 60
  *       400:
  *         description: Dados inválidos
  *         content:
@@ -55,6 +74,15 @@ const router = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       408:
+ *         description: Timeout ao gerar QR Code
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               status: "error"
+ *               message: "Timeout ao gerar QR Code"
  *       500:
  *         description: Erro interno do servidor
  *         content:

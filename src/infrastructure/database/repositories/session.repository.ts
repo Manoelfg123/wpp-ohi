@@ -118,6 +118,6 @@ export class SessionRepository {
    */
   async delete(id: string): Promise<void> {
     const session = await this.findById(id);
-    await this.repository.remove(session);
+    await this.repository.remove(session as SessionEntity);
   }
 }

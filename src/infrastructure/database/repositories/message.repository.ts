@@ -1,126 +1,88 @@
 import { Repository } from 'typeorm';
-import { MessageEntity } from '../entities/message.entity';
 import { dataSource } from '../../../app';
-import { IMessageDetails, IMessageResponse } from '../../../domain/interfaces/message.interface';
-import { MessageStatus } from '../../../domain/enums/message-status.enum';
+import { MessageEntity } from '../entities/message.entity';
+import { ICreateMessageDTO, IMessageResponse } from '../../../domain/interfaces/message.interface';
 import { MessageType } from '../../../domain/enums/message-types.enum';
+import { MessageStatus } from '../../../domain/enums/message-status.enum';
 import { NotFoundError } from '../../../utils/error.types';
-import { generateUUID } from '../../../utils/helpers';
+import logger from '../../../utils/logger';
 
 /**
  * Repositório para operações com mensagens no banco de dados
  */
 export class MessageRepository {
-  private _repository: Repository<MessageEntity>;
+  private repository: Repository<MessageEntity>;
 
-  private get repository(): Repository<MessageEntity> {
-    if (!this._repository) {
-      this._repository = dataSource.getRepository(MessageEntity);
-    }
-    return this._repository;
+  constructor() {
+    this.repository = dataSource.getRepository(MessageEntity);
   }
 
   /**
    * Cria uma nova mensagem
    * @param data Dados da mensagem
    */
-  async create(data: {
-    sessionId: string;
-    to: string;
-    type: MessageType;
-    content: Record<string, any>;
-    metadata?: Record<string, any>;
-  }): Promise<IMessageResponse> {
-    const message = this.repository.create({
-      id: generateUUID(),
-      sessionId: data.sessionId,
-      toNumber: data.to,
-      type: data.type,
-      content: data.content,
-      status: MessageStatus.PENDING,
-      metadata: data.metadata || {},
-    });
+  async create(data: ICreateMessageDTO): Promise<MessageEntity> {
+    try {
+      const message = this.repository.create({
+        messageId: data.messageId || '',
+        sessionId: data.sessionId,
+        type: data.type,
+        content: data.content,
+        from: data.from || '',
+        to: data.to,
+        timestamp: data.timestamp || Date.now(),
+        isFromMe: data.isFromMe || false,
+        status: data.status || MessageStatus.SENT,
+        metadata: data.metadata || {}
+      });
 
-    const savedMessage = await this.repository.save(message);
-    return {
-      ...savedMessage,
-      to: savedMessage.toNumber
-    };
+      return this.repository.save(message);
+    } catch (error) {
+      logger.error('Erro ao criar mensagem:', error);
+      throw error;
+    }
   }
 
   /**
    * Busca uma mensagem pelo ID
    * @param id ID da mensagem
    */
-  async findById(id: string): Promise<IMessageDetails> {
-    const message = await this.repository.findOne({ 
-      where: { id },
-      relations: ['session'],
-    });
+  async findById(id: string): Promise<MessageEntity> {
+    try {
+      const message = await this.repository.findOne({ where: { id } });
 
-    if (!message) {
-      throw new NotFoundError(`Mensagem com ID ${id} não encontrada`);
+      if (!message) {
+        throw new NotFoundError(`Mensagem ${id} não encontrada`);
+      }
+
+      return message;
+    } catch (error) {
+      logger.error(`Erro ao buscar mensagem ${id}:`, error);
+      throw error;
     }
-
-    return {
-      ...message,
-      to: message.toNumber
-    };
   }
 
   /**
    * Busca uma mensagem pelo ID do WhatsApp
    * @param messageId ID da mensagem no WhatsApp
    */
-  async findByMessageId(messageId: string): Promise<IMessageDetails | null> {
-    const message = await this.repository.findOne({ 
-      where: { messageId },
-      relations: ['session'],
-    });
+  async findByMessageId(messageId: string): Promise<MessageEntity> {
+    try {
+      const message = await this.repository.findOne({ where: { messageId } });
 
-    return message ? {
-      ...message,
-      to: message.toNumber
-    } : null;
-  }
+      if (!message) {
+        throw new NotFoundError(`Mensagem ${messageId} não encontrada`);
+      }
 
-  /**
-   * Atualiza o ID do WhatsApp de uma mensagem
-   * @param id ID da mensagem
-   * @param messageId ID da mensagem no WhatsApp
-   */
-  async updateMessageId(id: string, messageId: string): Promise<IMessageResponse> {
-    const message = await this.findById(id);
-    message.messageId = messageId;
-    return this.repository.save(message);
-  }
-
-  /**
-   * Atualiza o status de uma mensagem
-   * @param id ID da mensagem
-   * @param status Novo status
-   * @param timestamp Data da atualização
-   */
-  async updateStatus(
-    id: string, 
-    status: MessageStatus, 
-    timestamp?: Date
-  ): Promise<IMessageResponse> {
-    const message = await this.findById(id);
-    message.status = status;
-
-    // Atualiza timestamps específicos baseado no status
-    if (status === MessageStatus.DELIVERED) {
-      message.deliveredAt = timestamp || new Date();
-    } else if (status === MessageStatus.READ) {
-      message.readAt = timestamp || new Date();
+      return message;
+    } catch (error) {
+      logger.error(`Erro ao buscar mensagem ${messageId}:`, error);
+      throw error;
     }
-
-    return this.repository.save(message);
   }
 
   /**
-   * Lista mensagens de uma sessão com paginação
+   * Busca mensagens de uma sessão
    * @param sessionId ID da sessão
    * @param options Opções de filtro e paginação
    */
@@ -132,34 +94,96 @@ export class MessageRepository {
       page?: number;
       limit?: number;
     }
-  ): Promise<{ messages: IMessageResponse[]; total: number }> {
-    const page = options?.page || 1;
-    const limit = options?.limit || 20;
-    const skip = (page - 1) * limit;
+  ): Promise<{ messages: MessageEntity[]; total: number }> {
+    try {
+      const page = options?.page || 1;
+      const limit = options?.limit || 20;
+      const skip = (page - 1) * limit;
 
-    const queryBuilder = this.repository.createQueryBuilder('message')
-      .where('message.sessionId = :sessionId', { sessionId });
+      const queryBuilder = this.repository
+        .createQueryBuilder('message')
+        .where('message.sessionId = :sessionId', { sessionId });
 
-    if (options?.status) {
-      queryBuilder.andWhere('message.status = :status', { status: options.status });
+      if (options?.status) {
+        queryBuilder.andWhere('message.status = :status', { status: options.status });
+      }
+
+      if (options?.type) {
+        queryBuilder.andWhere('message.type = :type', { type: options.type });
+      }
+
+      const [messages, total] = await queryBuilder
+        .orderBy('message.timestamp', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
+
+      return { messages, total };
+    } catch (error) {
+      logger.error(`Erro ao buscar mensagens da sessão ${sessionId}:`, error);
+      throw error;
     }
+  }
 
-    if (options?.type) {
-      queryBuilder.andWhere('message.type = :type', { type: options.type });
+  /**
+   * Atualiza o ID do WhatsApp de uma mensagem
+   * @param id ID da mensagem
+   * @param messageId Novo ID do WhatsApp
+   */
+  async updateMessageId(id: string, messageId: string): Promise<MessageEntity> {
+    try {
+      const message = await this.findById(id);
+      message.messageId = messageId;
+      return this.repository.save(message);
+    } catch (error) {
+      logger.error(`Erro ao atualizar ID da mensagem ${id}:`, error);
+      throw error;
     }
+  }
 
-    const [messages, total] = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .orderBy('message.createdAt', 'DESC')
-      .getManyAndCount();
+  /**
+   * Atualiza o status de uma mensagem
+   * @param id ID da mensagem
+   * @param status Novo status
+   */
+  async updateStatus(id: string, status: MessageStatus): Promise<MessageEntity> {
+    try {
+      const message = await this.findById(id);
+      message.status = status;
+      return this.repository.save(message);
+    } catch (error) {
+      logger.error(`Erro ao atualizar status da mensagem ${id}:`, error);
+      throw error;
+    }
+  }
 
-    return { 
-      messages: messages.map(message => ({
-        ...message,
-        to: message.toNumber
-      })), 
-      total 
-    };
+  /**
+   * Atualiza os metadados de uma mensagem
+   * @param id ID da mensagem
+   * @param metadata Novos metadados
+   */
+  async updateMetadata(id: string, metadata: Record<string, any>): Promise<MessageEntity> {
+    try {
+      const message = await this.findById(id);
+      message.metadata = { ...message.metadata, ...metadata };
+      return this.repository.save(message);
+    } catch (error) {
+      logger.error(`Erro ao atualizar metadados da mensagem ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove uma mensagem
+   * @param id ID da mensagem
+   */
+  async delete(id: string): Promise<void> {
+    try {
+      const message = await this.findById(id);
+      await this.repository.remove(message);
+    } catch (error) {
+      logger.error(`Erro ao remover mensagem ${id}:`, error);
+      throw error;
+    }
   }
 }

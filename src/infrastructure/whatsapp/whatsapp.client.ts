@@ -29,6 +29,24 @@ export class WhatsAppClient {
   }
 
   /**
+   * Converte tipo de mídia em MessageType
+   */
+  private getMessageTypeFromMediaType(mediaType: 'image' | 'video' | 'audio' | 'document'): MessageType {
+    switch (mediaType) {
+      case 'image':
+        return MessageType.IMAGE;
+      case 'video':
+        return MessageType.VIDEO;
+      case 'audio':
+        return MessageType.AUDIO;
+      case 'document':
+        return MessageType.DOCUMENT;
+      default:
+        throw new WhatsAppError(`Tipo de mídia não suportado: ${mediaType}`);
+    }
+  }
+
+  /**
    * Obtém o socket de uma sessão
    * @param sessionId ID da sessão
    */
@@ -38,11 +56,8 @@ export class WhatsAppClient {
     if (!socket) {
       logger.warn(`Socket não encontrado para sessão ${sessionId}. Tentando reconectar...`);
       
-      // Tenta reconectar a sessão
       try {
         await whatsAppSessionManager.startSession(sessionId);
-        
-        // Aguarda um momento para a conexão ser estabelecida
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         const reconnectedSocket = whatsAppSessionManager.getSocket(sessionId);
@@ -57,14 +72,11 @@ export class WhatsAppClient {
       }
     }
     
-    // Verifica se o socket está realmente conectado
     if (!socket.user || !socket.user.id) {
       logger.warn(`Socket encontrado mas não está autenticado para sessão ${sessionId}. Tentando reconectar...`);
       
       try {
         await whatsAppSessionManager.startSession(sessionId);
-        
-        // Aguarda um momento para a conexão ser estabelecida
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         const reconnectedSocket = whatsAppSessionManager.getSocket(sessionId);
@@ -97,7 +109,6 @@ export class WhatsAppClient {
         text: data.text 
       });
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -106,10 +117,8 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Prepara as opções da mensagem
       const messageOptions: any = {};
       
-      // Adiciona mensagem citada se fornecida
       if (data.options?.quoted) {
         messageOptions.quoted = {
           key: { 
@@ -120,7 +129,6 @@ export class WhatsAppClient {
         };
       }
       
-      // Prepara o conteúdo da mensagem
       const content = {
         text: data.text
       };
@@ -131,7 +139,6 @@ export class WhatsAppClient {
         options: messageOptions 
       });
       
-      // Envia a mensagem com tratamento de erro melhorado
       const result = await socket.sendMessage(jid, content, messageOptions);
       
       if (!result) {
@@ -143,7 +150,6 @@ export class WhatsAppClient {
         result 
       });
       
-      // Atualiza o ID da mensagem no banco de dados com validação
       if (result.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -172,29 +178,24 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Determina o tipo de conteúdo
       let mediaContent: Buffer | { url: string };
       
       if (typeof data.media === 'string') {
         if (isBase64(data.media)) {
-          // Converte Base64 para Buffer
           mediaContent = base64ToBuffer(data.media);
         } else if (isValidUrl(data.media)) {
-          // URL externa
           mediaContent = { url: data.media };
         } else {
           throw new WhatsAppError('Formato de mídia inválido. Forneça uma URL válida ou Base64.');
         }
       } else {
-        // Já é um Buffer
         mediaContent = data.media;
       }
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
-        type: data.type,
+        type: this.getMessageTypeFromMediaType(data.type),
         content: { 
           media: typeof data.media === 'string' ? data.media : '[Buffer]',
           caption: data.caption,
@@ -204,16 +205,14 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara o conteúdo baseado no tipo
       let content: any;
       
       switch (data.type) {
-        case MessageType.IMAGE:
+        case 'image':
           content = {
             image: mediaContent,
             caption: data.caption,
@@ -221,7 +220,7 @@ export class WhatsAppClient {
           };
           break;
           
-        case MessageType.VIDEO:
+        case 'video':
           content = {
             video: mediaContent,
             caption: data.caption,
@@ -229,15 +228,15 @@ export class WhatsAppClient {
           };
           break;
           
-        case MessageType.AUDIO:
+        case 'audio':
           content = {
             audio: mediaContent,
             mimetype: data.options?.mimetype || 'audio/mp4',
-            ptt: true, // Reproduzir como nota de voz
+            ptt: true,
           };
           break;
           
-        case MessageType.DOCUMENT:
+        case 'document':
           content = {
             document: mediaContent,
             mimetype: data.options?.mimetype || 'application/octet-stream',
@@ -250,10 +249,8 @@ export class WhatsAppClient {
           throw new WhatsAppError(`Tipo de mídia não suportado: ${data.type}`);
       }
       
-      // Envia a mensagem
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -278,7 +275,6 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -292,12 +288,10 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara o conteúdo da localização
       const content = {
         location: {
           degreesLatitude: data.latitude,
@@ -307,10 +301,8 @@ export class WhatsAppClient {
         },
       };
       
-      // Envia a mensagem
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -335,7 +327,6 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -344,15 +335,12 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara o contato no formato do WhatsApp
       const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${data.contact.fullName}\nTEL;type=CELL;type=VOICE;waid=${data.contact.phoneNumber}:${data.contact.phoneNumber}\n`;
       
-      // Adiciona campos opcionais
       const vcardExtras = [];
       
       if (data.contact.organization) {
@@ -365,7 +353,6 @@ export class WhatsAppClient {
       
       const fullVcard = `${vcard}${vcardExtras.join('\n')}\nEND:VCARD`;
       
-      // Prepara o conteúdo do contato
       const content = {
         contacts: {
           displayName: data.contact.fullName,
@@ -373,10 +360,8 @@ export class WhatsAppClient {
         },
       };
       
-      // Envia a mensagem
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -401,7 +386,6 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -414,29 +398,24 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara os botões no formato do Baileys
       const buttons = data.buttons.map(button => ({
         buttonId: button.id,
         buttonText: { displayText: button.text },
         type: 1,
       }));
       
-      // Prepara o conteúdo da mensagem com botões
       const content = {
         text: data.text,
         footer: data.footer,
         buttons,
       };
       
-      // Envia a mensagem
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -461,7 +440,6 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -476,12 +454,10 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara as seções no formato do Baileys
       const sections = data.sections.map(section => ({
         title: section.title,
         rows: section.rows.map(row => ({
@@ -491,7 +467,6 @@ export class WhatsAppClient {
         })),
       }));
       
-      // Prepara o conteúdo da mensagem com lista
       const content = {
         text: data.text,
         footer: data.footer,
@@ -500,10 +475,8 @@ export class WhatsAppClient {
         sections,
       };
       
-      // Envia a mensagem
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -528,7 +501,6 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -540,7 +512,6 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Prepara o conteúdo da reação
       const content = {
         react: {
           text: data.reaction,
@@ -551,10 +522,8 @@ export class WhatsAppClient {
         },
       };
       
-      // Envia a reação
       const result = await socket.sendMessage(jid, content);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);
@@ -579,25 +548,20 @@ export class WhatsAppClient {
       const socket = await this.getSocket(sessionId);
       const jid = formatPhoneNumber(data.to);
       
-      // Determina o tipo de conteúdo
       let stickerContent: Buffer | { url: string };
       
       if (typeof data.sticker === 'string') {
         if (isBase64(data.sticker)) {
-          // Converte Base64 para Buffer
           stickerContent = base64ToBuffer(data.sticker);
         } else if (isValidUrl(data.sticker)) {
-          // URL externa
           stickerContent = { url: data.sticker };
         } else {
           throw new WhatsAppError('Formato de sticker inválido. Forneça uma URL válida ou Base64.');
         }
       } else {
-        // Já é um Buffer
         stickerContent = data.sticker;
       }
       
-      // Cria o registro da mensagem no banco de dados
       const message = await this.messageRepository.create({
         sessionId,
         to: data.to,
@@ -608,20 +572,16 @@ export class WhatsAppClient {
         metadata: data.options,
       });
       
-      // Opções para mensagem citada
       const quoted = data.options?.quoted 
         ? { quoted: { key: { id: data.options.quoted.id } } } 
         : {};
       
-      // Prepara o conteúdo do sticker
       const content = {
         sticker: stickerContent,
       };
       
-      // Envia o sticker
       const result = await socket.sendMessage(jid, content, quoted);
       
-      // Atualiza o ID da mensagem no banco de dados
       if (result?.key?.id) {
         await this.messageRepository.updateMessageId(message.id, result.key.id);
         await this.messageRepository.updateStatus(message.id, MessageStatus.SENT);

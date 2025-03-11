@@ -1,10 +1,12 @@
 import { 
   Entity, 
-  PrimaryColumn, 
   Column, 
+  PrimaryColumn,
   CreateDateColumn, 
-  UpdateDateColumn 
+  UpdateDateColumn,
+  OneToMany
 } from 'typeorm';
+import { MessageEntity } from './message.entity';
 import { SessionStatus } from '../../../domain/enums/session-status.enum';
 
 /**
@@ -36,4 +38,7 @@ export class SessionEntity {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @OneToMany(() => MessageEntity, message => message.session)
+  messages: MessageEntity[];
 }

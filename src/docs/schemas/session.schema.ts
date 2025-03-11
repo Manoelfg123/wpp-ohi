@@ -169,4 +169,22 @@
  *           type: string
  *           description: Mensagem descritiva sobre o status
  *           example: "Sessão desconectada com sucesso"
+ *
+ *     SessionWithQRResponse:
+ *       type: object
+ *       properties:
+ *         status:
+ *           type: string
+ *           example: success
+ *         data:
+ *           type: object
+ *           properties:
+ *             session:
+ *               $ref: '#/components/schemas/SessionResponse'
+ *             qrcode:
+ *               $ref: '#/components/schemas/QRCodeResponse'
+ *             message:
+ *               type: string
+ *               description: Mensagem informativa (quando a sessão já está conectada)
+ *               example: "Sessão já está conectada"
  */

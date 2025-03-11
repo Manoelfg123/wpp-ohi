@@ -192,7 +192,12 @@ export class MessageController {
         options.limit = Number(limit);
       }
       
-      const result = await messageService.listSessionMessages(id, options);
+      const result = await messageService.listSessionMessages(id, {
+        status: options.status as MessageStatus,
+        type: options.type as MessageType,
+        page: options.page,
+        limit: options.limit
+      });
       
       res.status(200).json({
         status: 'success',

@@ -2,14 +2,19 @@ import { MessageType } from '../enums/message-types.enum';
 import { MessageStatus } from '../enums/message-status.enum';
 
 /**
- * Interface base para opções de mensagem
+ * Interface para criação de mensagem
  */
-export interface IBaseMessageOptions {
-  quoted?: {
-    id: string;
-    type: string;
-  };
-  [key: string]: any;
+export interface ICreateMessageDTO {
+  sessionId: string;
+  messageId?: string;
+  type: MessageType;
+  content: Record<string, any>;
+  from?: string;
+  to: string;
+  timestamp?: number;
+  isFromMe?: boolean;
+  status?: MessageStatus;
+  metadata?: Record<string, any>;
 }
 
 /**
@@ -18,18 +23,22 @@ export interface IBaseMessageOptions {
 export interface ITextMessage {
   to: string;
   text: string;
-  options?: IBaseMessageOptions;
+  options?: {
+    quoted?: { id: string };
+    mentions?: string[];
+  };
 }
 
 /**
- * Interface para mensagem de mídia (imagem, vídeo, áudio, documento)
+ * Interface para mensagem de mídia
  */
 export interface IMediaMessage {
   to: string;
-  type: MessageType.IMAGE | MessageType.VIDEO | MessageType.AUDIO | MessageType.DOCUMENT;
-  media: string | Buffer;
+  media: Buffer | string;
   caption?: string;
-  options?: IBaseMessageOptions & {
+  type: 'image' | 'video' | 'audio' | 'document';
+  options?: {
+    quoted?: { id: string };
     filename?: string;
     mimetype?: string;
   };
@@ -44,7 +53,19 @@ export interface ILocationMessage {
   longitude: number;
   name?: string;
   address?: string;
-  options?: IBaseMessageOptions;
+  options?: {
+    quoted?: { id: string };
+  };
+}
+
+/**
+ * Interface para contato
+ */
+export interface IContact {
+  fullName: string;
+  phoneNumber: string;
+  organization?: string;
+  email?: string;
 }
 
 /**
@@ -52,13 +73,18 @@ export interface ILocationMessage {
  */
 export interface IContactMessage {
   to: string;
-  contact: {
-    fullName: string;
-    phoneNumber: string;
-    organization?: string;
-    email?: string;
+  contact: IContact;
+  options?: {
+    quoted?: { id: string };
   };
-  options?: IBaseMessageOptions;
+}
+
+/**
+ * Interface para botão
+ */
+export interface IButton {
+  id: string;
+  text: string;
 }
 
 /**
@@ -67,12 +93,23 @@ export interface IContactMessage {
 export interface IButtonMessage {
   to: string;
   text: string;
+  buttons: IButton[];
   footer?: string;
-  buttons: Array<{
+  options?: {
+    quoted?: { id: string };
+  };
+}
+
+/**
+ * Interface para seção de lista
+ */
+export interface IListSection {
+  title: string;
+  rows: {
     id: string;
-    text: string;
-  }>;
-  options?: IBaseMessageOptions;
+    title: string;
+    description?: string;
+  }[];
 }
 
 /**
@@ -80,19 +117,14 @@ export interface IButtonMessage {
  */
 export interface IListMessage {
   to: string;
+  title: string;
   text: string;
-  footer?: string;
-  title?: string;
   buttonText: string;
-  sections: Array<{
-    title: string;
-    rows: Array<{
-      id: string;
-      title: string;
-      description?: string;
-    }>;
-  }>;
-  options?: IBaseMessageOptions;
+  sections: IListSection[];
+  footer?: string;
+  options?: {
+    quoted?: { id: string };
+  };
 }
 
 /**
@@ -102,7 +134,9 @@ export interface IReactionMessage {
   to: string;
   messageId: string;
   reaction: string;
-  options?: IBaseMessageOptions;
+  options?: {
+    quoted?: { id: string };
+  };
 }
 
 /**
@@ -110,40 +144,34 @@ export interface IReactionMessage {
  */
 export interface IStickerMessage {
   to: string;
-  sticker: string | Buffer;
-  options?: IBaseMessageOptions;
+  sticker: Buffer | string;
+  options?: {
+    quoted?: { id: string };
+  };
 }
 
 /**
- * Interface para resposta de envio de mensagem
+ * Interface para resposta de mensagem
  */
 export interface IMessageResponse {
   id: string;
   messageId?: string;
   sessionId: string;
-  to: string;
   type: MessageType;
-  status: MessageStatus;
-  createdAt: Date;
-  metadata?: Record<string, any>;
-}
-
-/**
- * Interface para evento de status de mensagem
- */
-export interface IMessageStatusEvent {
-  messageId: string;
-  status: MessageStatus;
+  content: Record<string, any>;
+  from?: string;
   to: string;
-  timestamp: Date;
+  timestamp: number;
+  isFromMe: boolean;
+  status: MessageStatus;
+  metadata?: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**
- * Interface para detalhes de uma mensagem
+ * Interface para detalhes de mensagem
  */
 export interface IMessageDetails extends IMessageResponse {
-  content: Record<string, any>;
-  updatedAt: Date;
-  deliveredAt?: Date;
-  readAt?: Date;
+  quotedMessage?: IMessageResponse;
 }

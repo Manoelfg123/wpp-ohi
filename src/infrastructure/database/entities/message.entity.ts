@@ -1,73 +1,73 @@
 import { 
   Entity, 
-  PrimaryColumn, 
   Column, 
+  PrimaryGeneratedColumn, 
   CreateDateColumn, 
-  UpdateDateColumn, 
-  ManyToOne, 
-  JoinColumn 
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index
 } from 'typeorm';
-import { MessageStatus } from '../../../domain/enums/message-status.enum';
 import { MessageType } from '../../../domain/enums/message-types.enum';
+import { MessageStatus } from '../../../domain/enums/message-status.enum';
 import { SessionEntity } from './session.entity';
 
-/**
- * Entidade que representa uma mensagem no banco de dados
- */
 @Entity('messages')
 export class MessageEntity {
-  @PrimaryColumn('uuid')
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true })
-  messageId?: string;
+  @Column({ name: 'message_id' })
+  messageId: string;
 
-  @Column()
+  @Column({ name: 'session_id' })
+  @Index()
   sessionId: string;
 
-  @ManyToOne(() => SessionEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'sessionId' })
+  @ManyToOne(() => SessionEntity, session => session.messages)
+  @JoinColumn({ name: 'session_id' })
   session: SessionEntity;
 
   @Column({
     type: 'enum',
-    enum: MessageType
+    enum: MessageType,
   })
   type: MessageType;
-
-  @Column()
-  toNumber: string;
-
-  get to(): string {
-    return this.toNumber;
-  }
-
-  set to(value: string) {
-    this.toNumber = value;
-  }
-
-  @Column({ type: 'jsonb' })
-  content: Record<string, any>;
 
   @Column({
     type: 'enum',
     enum: MessageStatus,
-    default: MessageStatus.PENDING
+    default: MessageStatus.SENT
   })
   status: MessageStatus;
 
-  @Column({ type: 'jsonb', default: '{}' })
+  @Column({ type: 'jsonb', default: {} })
+  content: Record<string, any>;
+
+  @Column()
+  from: string;
+
+  @Column()
+  to: string;
+
+  @Column({ type: 'bigint' })
+  timestamp: number;
+
+  @Column({ name: 'is_from_me', default: false })
+  isFromMe: boolean;
+
+  @Column('jsonb', { default: {} })
   metadata: Record<string, any>;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'delivered_at', type: 'timestamp', nullable: true })
   deliveredAt?: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'read_at', type: 'timestamp', nullable: true })
   readAt?: Date;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }

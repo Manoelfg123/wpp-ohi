@@ -16,6 +16,7 @@ import { SessionStatus } from '../../domain/enums/session-status.enum';
 import logger from '../../utils/logger';
 import { delay } from '../../utils/helpers';
 import { WhatsAppError } from '../../utils/error.types';
+import { messageProcessor } from './message.processor';
 
 /**
  * Gerenciador de sessões do WhatsApp
@@ -69,22 +70,22 @@ export class WhatsAppSessionManager {
         version,
         printQRInTerminal: false,
         logger,
-        browser: ['Chrome (Linux)', 'Desktop', '3.0'] as [string, string, string], // Identificador mais genérico com tipo explícito
+        browser: ['Chrome (Linux)', 'Desktop', '3.0'] as [string, string, string],
         qrTimeout: sessionData.config.qrTimeout || 60000,
-        connectTimeoutMs: 120000, // Aumentado para 2 minutos
-        defaultQueryTimeoutMs: 60000, // Aumentado para 1 minuto
+        connectTimeoutMs: 120000,
+        defaultQueryTimeoutMs: 60000,
         emitOwnEvents: true,
-        markOnlineOnConnect: true, // Marca como online ao conectar
-        retryRequestDelayMs: 5000, // Delay entre tentativas de requisição
-        customUploadHosts: [{ hostname: 'g.whatsapp.net', maxContentLengthBytes: 10000000 }], // Hosts permitidos para upload
-        fireInitQueries: true, // Executa queries iniciais
-        syncFullHistory: false, // Não sincroniza histórico completo para economizar recursos
-        linkPreviewImageThumbnailWidth: 192, // Largura padrão para thumbnails
+        markOnlineOnConnect: true,
+        retryRequestDelayMs: 5000,
+        customUploadHosts: [{ hostname: 'g.whatsapp.net', maxContentLengthBytes: 10000000 }],
+        fireInitQueries: true,
+        syncFullHistory: false,
+        linkPreviewImageThumbnailWidth: 192,
         transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
-        getMessage: async () => undefined // Necessário para algumas operações internas
+        getMessage: async () => undefined
       };
       
-      // Cria o socket do WhatsApp com tratamento de erro
+      // Cria o socket do WhatsApp
       let socket;
       try {
         socket = makeWASocket(socketConfig);
@@ -96,31 +97,27 @@ export class WhatsAppSessionManager {
       // Salva o socket na lista de sessões ativas
       this.sessions.set(sessionId, socket);
       
-      // Manipulador de eventos de conexão com tratamento robusto
+      // Configura os callbacks do socket
       socket.ev.on('connection.update', async (update) => {
         logger.info(`Atualização de conexão para sessão ${sessionId}:`, update);
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-          // Gera o QR Code com mais informações de debug
           try {
             logger.info(`Recebido novo QR code para sessão ${sessionId}`);
             const qrCode = await QRCode.toDataURL(qr, {
-              errorCorrectionLevel: 'H', // Maior nível de correção de erros
+              errorCorrectionLevel: 'H',
               margin: 4,
               scale: 4,
-              width: 256 // Tamanho fixo para melhor compatibilidade
+              width: 256
             });
             const expiresAt = new Date(Date.now() + (sessionData.config.qrTimeout || 60000));
             this.qrCodes.set(sessionId, { qrCode, expiresAt });
             
-            // Atualiza o status da sessão
             await this.sessionRepository.updateStatus(sessionId, SessionStatus.QR_READY);
-            
             logger.info(`QR Code gerado para a sessão ${sessionId}`);
           } catch (error) {
             logger.error(`Erro ao gerar QR Code para a sessão ${sessionId}:`, error);
-            // Tenta reconectar em caso de erro na geração do QR
             await this.sessionRepository.updateStatus(sessionId, SessionStatus.ERROR);
             this.startSession(sessionId);
           }
@@ -135,29 +132,20 @@ export class WhatsAppSessionManager {
           if (shouldReconnect && sessionData.config.restartOnAuthFail !== false) {
             logger.info(`Tentando reconectar sessão ${sessionId}...`);
             await this.sessionRepository.updateStatus(sessionId, SessionStatus.CONNECTING);
-            
-            // Aguarda um pouco antes de tentar reconectar
             await delay(5000);
             this.startSession(sessionId);
           } else {
-            // Sessão desconectada permanentemente
             await this.sessionRepository.updateStatus(
               sessionId, 
               statusCode === DisconnectReason.loggedOut 
                 ? SessionStatus.LOGGED_OUT 
                 : SessionStatus.DISCONNECTED
             );
-            
-            // Remove a sessão da lista de sessões ativas
             this.sessions.delete(sessionId);
           }
         } else if (connection === 'open') {
           logger.info(`Sessão ${sessionId} conectada com sucesso!`);
-          
-          // Atualiza o status da sessão
           await this.sessionRepository.updateStatus(sessionId, SessionStatus.CONNECTED);
-          
-          // Remove o QR Code
           this.qrCodes.delete(sessionId);
         }
       });
@@ -165,15 +153,24 @@ export class WhatsAppSessionManager {
       // Salva as credenciais quando forem atualizadas
       socket.ev.on('creds.update', saveCreds);
       
-      // Configura outros listeners de eventos
-      // TODO: Implementar listeners para mensagens, status, etc.
+      // Configura o processamento de mensagens
+      socket.ev.on('messages.upsert', async ({ messages, type }) => {
+        try {
+          for (const message of messages) {
+            // Ignora mensagens enviadas por nós mesmos
+            if (message.key.fromMe) continue;
+
+            // Processa a mensagem usando o messageProcessor
+            await messageProcessor.processMessage(message, sessionId);
+          }
+        } catch (error) {
+          logger.error(`Erro ao processar mensagens da sessão ${sessionId}:`, error);
+        }
+      });
       
     } catch (error) {
       logger.error(`Erro ao iniciar sessão ${sessionId}:`, error);
-      
-      // Atualiza o status da sessão para erro
       await this.sessionRepository.updateStatus(sessionId, SessionStatus.ERROR);
-      
       throw new WhatsAppError(`Erro ao iniciar sessão: ${(error as Error).message}`);
     }
   }
@@ -214,15 +211,9 @@ export class WhatsAppSessionManager {
     }
     
     try {
-      // Desconecta o socket
       await socket.logout();
-      
-      // Remove a sessão da lista de sessões ativas
       this.sessions.delete(sessionId);
-      
-      // Atualiza o status da sessão
       await this.sessionRepository.updateStatus(sessionId, SessionStatus.DISCONNECTED);
-      
       logger.info(`Sessão ${sessionId} desconectada com sucesso`);
     } catch (error) {
       logger.error(`Erro ao desconectar sessão ${sessionId}:`, error);
@@ -247,7 +238,6 @@ export class WhatsAppSessionManager {
       config: sessionData.config,
     };
     
-    // Adiciona informações do cliente se estiver conectado
     if (socket && sessionData.status === SessionStatus.CONNECTED) {
       const user = socket.user;
       

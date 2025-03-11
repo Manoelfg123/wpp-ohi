@@ -12,6 +12,8 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:
       - ./sessions:/app/sessions # Volume persistente para as sessões do WhatsApp
+      - ./src:/app/src # Código fonte para documentação Swagger
+      - ./dist:/app/dist # Arquivos compilados
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=${PORT:-3000}
