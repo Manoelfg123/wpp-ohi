@@ -14,6 +14,9 @@ export class SessionRepository {
 
   private get repository(): Repository<SessionEntity> {
     if (!this._repository) {
+      if (!dataSource.isInitialized) {
+        throw new Error('DataSource não está inicializado');
+      }
       this._repository = dataSource.getRepository(SessionEntity);
     }
     return this._repository;

@@ -11,10 +11,16 @@ import logger from '../../../utils/logger';
  * Repositório para operações com mensagens no banco de dados
  */
 export class MessageRepository {
-  private repository: Repository<MessageEntity>;
+  private _repository: Repository<MessageEntity>;
 
-  constructor() {
-    this.repository = dataSource.getRepository(MessageEntity);
+  private get repository(): Repository<MessageEntity> {
+    if (!this._repository) {
+      if (!dataSource.isInitialized) {
+        throw new Error('DataSource não está inicializado');
+      }
+      this._repository = dataSource.getRepository(MessageEntity);
+    }
+    return this._repository;
   }
 
   /**
